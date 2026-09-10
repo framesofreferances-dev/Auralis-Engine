@@ -1,15 +1,24 @@
-"""Acquisition implementations used by Auralis."""
+"""Provider-aware acquisition layer for Auralis."""
 
+from .jamendo import (
+    JamendoAcquisitionError,
+    JamendoConfigurationError,
+    JamendoError,
+    JamendoTrack,
+    candidates_from_tracks,
+    download_track,
+    search_candidates as search_jamendo,
+    search_tracks,
+)
+from .router import (
+    acquire_first_available,
+    download_candidate,
+)
 from .ytdlp import (
     AudioAsset,
     ProviderCircuitOpen,
     ProviderHealth,
-    _classify_download_error,
-    _find_downloaded_file,
-    _sha256,
-    _yt_dlp_options,
-    acquire_first_available,
-    download_audio,
+    download_audio as download_youtube_audio,
     write_manifest,
 )
 
@@ -17,11 +26,16 @@ __all__ = [
     "AudioAsset",
     "ProviderCircuitOpen",
     "ProviderHealth",
+    "JamendoAcquisitionError",
+    "JamendoConfigurationError",
+    "JamendoError",
+    "JamendoTrack",
     "acquire_first_available",
-    "download_audio",
+    "candidates_from_tracks",
+    "download_candidate",
+    "download_track",
+    "download_youtube_audio",
+    "search_jamendo",
+    "search_tracks",
     "write_manifest",
-    "_classify_download_error",
-    "_find_downloaded_file",
-    "_sha256",
-    "_yt_dlp_options",
 ]
