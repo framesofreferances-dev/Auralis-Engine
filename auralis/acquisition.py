@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -17,7 +18,6 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
 from .models import Candidate
-
 
 
 class ProviderCircuitOpen(RuntimeError):
@@ -63,8 +63,6 @@ def _sha256(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
 
 @dataclass(slots=True)
 class AudioAsset:
-    """A locally acquired audio asset and its source metadata."""
-
     source_id: str
     source_url: str
     path: str
@@ -114,7 +112,6 @@ def _ffprobe(path: Path) -> tuple[float | None, str | None]:
 
 
 def write_manifest(asset: AudioAsset, manifest_dir: str | Path = "assets/manifests") -> Path:
-    """Persist acquisition metadata without storing secrets or cookies."""
     destination = Path(manifest_dir)
     destination.mkdir(parents=True, exist_ok=True)
     manifest_path = destination / f"{asset.source_id}.json"
@@ -126,16 +123,6 @@ def write_manifest(asset: AudioAsset, manifest_dir: str | Path = "assets/manifes
 
 
 def _cookie_file(explicit: str | Path | None = None, *, base_dir: str | Path | None = None) -> Path | None:
-    """Resolve a local yt-dlp cookie source.
-
-    Supported inputs:
-      * Netscape-format cookies.txt
-      * browser-extension JSON cookie exports
-
-    JSON exports are converted to a private temporary Netscape file because
-    yt-dlp expects Netscape format for --cookies. Cookie values are never
-    printed, manifested, or committed by Auralis.
-    """
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit).expanduser())
@@ -189,18 +176,9 @@ def _cookie_file(explicit: str | Path | None = None, *, base_dir: str | Path | N
             except (TypeError, ValueError):
                 expiration = 0
 
-            # Netscape cookie files use TAB-separated fields.
             handle.write(
                 "\t".join(
-                    [
-                        domain,
-                        include_subdomains,
-                        path,
-                        secure,
-                        str(expiration),
-                        name,
-                        value,
-                    ]
+                    [domain, include_subdomains, path, secure, str(expiration), name, value]
                 )
                 + "\n"
             )
@@ -212,13 +190,25 @@ def _cookie_file(explicit: str | Path | None = None, *, base_dir: str | Path | N
     return converted
 
 
+def _normalize_pot_url(value: str | None) -> str:
+    """Return a literal provider URL even if a value was copied as Markdown."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+
+    match = re.fullmatch(r"\[([^\]]+)\]\(([^)]+)\)", value)
+    if match:
+        value = match.group(2).strip()
+
+    return value.strip().rstrip("/")
+
+
 def _yt_dlp_options(
     destination: Path,
     *,
     cookies_file: str | Path | None = None,
     pot_base_url: str | None = None,
 ) -> dict[str, Any]:
-    """Build acquisition options for public or explicitly authorized sources."""
     options = {
         "format": "bestaudio/best",
         "outtmpl": str(destination / "%(id)s.%(ext)s"),
@@ -230,9 +220,8 @@ def _yt_dlp_options(
         "extractor_retries": 2,
         "js_runtimes": {"deno": {}},
     }
-    resolved_pot_url = (
-        pot_base_url
-        or os.environ.get("AURALIS_YTDLP_POT_BASE_URL", "").strip()
+    resolved_pot_url = _normalize_pot_url(
+        pot_base_url or os.environ.get("AURALIS_YTDLP_POT_BASE_URL", "")
     )
     if resolved_pot_url:
         options["extractor_args"] = {
@@ -260,7 +249,6 @@ def _classify_download_error(exc: Exception) -> str:
     return "provider acquisition failed"
 
 
-
 def _cached_asset(destination: Path, source_id: str) -> Path | None:
     try:
         return _find_downloaded_file(destination, source_id)
@@ -283,7 +271,6 @@ def acquire_first_available(
     cookies_file: str | Path | None = None,
     pot_base_url: str | None = None,
 ) -> Path:
-    """Try ranked candidates in order without bypassing provider controls.\n\n    Provider failures are classified so the caller gets an actionable reason.\n    A circuit prevents hammering a provider after a hard verification/auth failure.\n    """
     failures: list[str] = []
     for candidate in candidates:
         provider = _provider_for_url(candidate.url)
@@ -306,10 +293,7 @@ def acquire_first_available(
             failures.append(f"{candidate.id}: {reason}")
             if reason in {"provider verification required", "youtube cookies expired or rotated", "authentication required", "drm protected source"}:
                 _PROVIDER_HEALTH.open(provider)
-            print(
-                f"Acquisition unavailable for {candidate.id}: "
-                f"{reason}; trying next candidate."
-            )
+            print(f"Acquisition unavailable for {candidate.id}: {reason}; trying next candidate.")
     detail = "; ".join(failures) if failures else "no candidates supplied"
     raise RuntimeError(f"No candidate could be acquired. {detail}")
 
@@ -322,12 +306,6 @@ def download_audio(
     cookies_file: str | Path | None = None,
     pot_base_url: str | None = None,
 ) -> Path:
-    """Acquire one permitted audio source through yt-dlp.
-
-    Auralis intentionally does not bypass DRM, paywalls, or provider security
-    controls. Cookies are supported only when supplied by the user for an
-    account/source they are authorized to access.
-    """
     if not url.strip():
         raise ValueError("url must not be empty")
 
