@@ -173,6 +173,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--manifest-dir",
         default="assets/manifests",
     )
+    music_parser.add_argument(
+        "--cookies-file",
+        default=None,
+        help="YouTube cookies.txt or browser-export JSON",
+    )
+    music_parser.add_argument(
+        "--pot-base-url",
+        default=os.environ.get(
+            "AURALIS_YTDLP_POT_BASE_URL"
+        ),
+        help="YouTube bgutil provider URL",
+    )
 
     sub.add_parser(
         "doctor",
@@ -664,6 +676,8 @@ def main() -> int:
             manifest_dir=Path(
                 args.manifest_dir
             ),
+            cookies_file=args.cookies_file,
+            pot_base_url=args.pot_base_url,
         )
 
         selected = next(
