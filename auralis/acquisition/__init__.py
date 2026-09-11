@@ -18,6 +18,9 @@ from .ytdlp import (
     AudioAsset,
     ProviderCircuitOpen,
     ProviderHealth,
+    _find_downloaded_file,
+    _sha256,
+    _yt_dlp_options,
     download_audio as download_youtube_audio,
     write_manifest,
 )
