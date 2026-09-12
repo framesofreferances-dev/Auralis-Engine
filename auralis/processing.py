@@ -48,11 +48,15 @@ def mix_narration(narration: str | Path, music: str | Path, output: str | Path) 
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    # Split the narration stream: one branch remains dry for the final mix,
+    # while the other drives side-chain ducking on the background music.
     filter_graph = (
-        "[0:a]aresample=48000,volume=1.0[narr];"
+        "[0:a]aresample=48000,volume=1.0,asplit=2[narr_mix][narr_side];"
         "[1:a]aresample=48000,volume=0.18[music];"
-        "[music][narr]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];"
-        "[narr][ducked]amix=inputs=2:duration=first:dropout_transition=2[mix]"
+        "[music][narr_side]sidechaincompress="
+        "threshold=0.025:ratio=8:attack=20:release=350[ducked];"
+        "[narr_mix][ducked]amix="
+        "inputs=2:duration=first:dropout_transition=2[mix]"
     )
 
     run_ffmpeg([
