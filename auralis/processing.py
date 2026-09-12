@@ -40,19 +40,20 @@ def prepare_music(source: str | Path, output: str | Path, duration: float) -> Pa
 
 
 def mix_narration(narration: str | Path, music: str | Path, output: str | Path) -> Path:
-    """Mix narration over music with side-chain-style ducking.
-
-    The music is reduced while narration is present. The narration remains the
-    primary signal and is copied to the final stereo output.
-    """
+    """Mix narration over music with side-chain-style ducking."""
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    # The narration is split into two branches. One remains dry for the final
+    # mix; the other drives the sidechain compressor. Reusing the same labelled
+    # stream as both input and sidechain causes FFmpeg to reject the graph.
     filter_graph = (
-        "[0:a]aresample=48000,volume=1.0[narr];"
+        "[0:a]aresample=48000,volume=1.0,asplit=2[narr_mix][narr_side];"
         "[1:a]aresample=48000,volume=0.18[music];"
-        "[music][narr]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=350[ducked];"
-        "[narr][ducked]amix=inputs=2:duration=first:dropout_transition=2[mix]"
+        "[music][narr_side]sidechaincompress="
+        "threshold=0.025:ratio=8:attack=20:release=350[ducked];"
+        "[narr_mix][ducked]amix="
+        "inputs=2:duration=first:dropout_transition=2[mix]"
     )
 
     run_ffmpeg([
